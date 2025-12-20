@@ -1,0 +1,30 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html, body, #root {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  /* Exact gradient from your HTML */
+  background: linear-gradient(135deg, #0C3B2E 0%, #6D9773 40%, #BB8A52 75%, #FFBA00 100%);
+  background-attachment: fixed;
+  color: #FFFFFF;
+  font-family: 'Inter', sans-serif;
+}
+
+/* Custom Scrollbar from your HTML */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #0C3B2E;
+}
+::-webkit-scrollbar-thumb {
+  background-color: #6D9773;
+  border-radius: 9999px;
+}
