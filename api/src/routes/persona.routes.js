@@ -51,10 +51,20 @@ router.post("/generate", verifyToken, async (req, res) => {
     }
 
     // Generate response using Gemini
+    console.log(`📝 Generating persona response for: ${personaType}`);
+    console.log(`   Idea: ${idea.title}`);
+
     const aiResponse = await geminiService.generatePersonaResponse(
       `Title: ${idea.title}\nDescription: ${idea.description}\nCategory: ${idea.category}`,
       personaType
     );
+
+    // Check if this is a fallback response
+    if (aiResponse.isFallback) {
+      console.warn(`⚠️  Using fallback response for ${personaType}`);
+    } else {
+      console.log(`✓ Generated AI response for ${personaType} with rating: ${aiResponse.rating}`);
+    }
 
     // Save response
     const personaResponse = new PersonaResponse({
@@ -69,9 +79,10 @@ router.post("/generate", verifyToken, async (req, res) => {
     res.status(201).json({
       success: true,
       data: personaResponse,
+      isFallback: aiResponse.isFallback || false, // Inform frontend if this is a fallback
     });
   } catch (error) {
-    console.error("Generate persona response error:", error);
+    console.error("❌ Generate persona response error:", error);
     res.status(500).json({
       success: false,
       message: "Server error while generating response",

@@ -4,8 +4,20 @@ const path = require("path");
 
 class GeminiService {
   constructor() {
+    if (!process.env.GEMINI_API_KEY) {
+      console.error("⚠️  GEMINI_API_KEY is not set in environment variables!");
+      console.error("   AI analysis will fall back to simulated responses.");
+    } else {
+      console.log("✓ Gemini API key detected");
+    }
+
     this.genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-    this.model = this.genAI.getGenerativeModel({ model: "gemini-pro" });
+    // Using models/gemini-2.5-flash (verified available with your API key)
+    // This was confirmed by running test_api_key.js
+    const modelName = process.env.GEMINI_MODEL || "models/gemini-2.5-flash";
+    this.model = this.genAI.getGenerativeModel({ model: modelName });
+    console.log(`✓ Using Gemini model: ${modelName}`);
+
     this.prompts = {};
     this.promptsLoaded = false;
   }
@@ -61,48 +73,88 @@ class GeminiService {
       };
     }
 
-    const fullPrompt = `${systemPrompt}\n\nUser Idea:\n${ideaContent}\n\nPlease provide your analysis/response based on the above idea.`;
+    // Enhanced prompt to ensure structured output with rating
+    const fullPrompt = `${systemPrompt}
+
+User Idea:
+${ideaContent}
+
+IMPORTANT INSTRUCTIONS:
+1. Provide your detailed analysis/response based on the above idea
+2. At the END of your response, include a rating on a new line in this EXACT format: "Rating: X/100" where X is a number between 0-100
+3. Be specific and reference details from the actual idea provided
+
+Please provide your analysis now:`;
 
     try {
+      console.log(`🤖 Generating ${personaType} analysis via Gemini API...`);
       const result = await this.model.generateContent(fullPrompt);
       const response = await result.response;
       const text = response.text();
 
+      console.log(`✓ Gemini API response received for ${personaType}`);
+
+      const rating = this.extractRating(text);
+      if (!rating) {
+        console.warn(`⚠️  Could not extract rating from Gemini response for ${personaType}, using default`);
+      }
+
       return {
         content: text,
-        rating: this.extractRating(text) || 0
+        rating: rating || 75 // Default to 75 if no rating found
       };
     } catch (error) {
-      console.error("Gemini generation error:", error.message);
-      console.warn("Falling back to simulated response due to API error.");
+      console.error("❌ Gemini generation error:", error.message);
+      console.error("   Error details:", error);
+      console.warn("⚠️  Falling back to simulated response due to API error.");
 
       return {
         content: this.getFallbackResponse(personaType, ideaContent),
-        rating: Math.floor(Math.random() * 30) + 60
+        rating: Math.floor(Math.random() * 30) + 60,
+        isFallback: true // Flag to indicate this is a fallback response
       };
     }
   }
 
   getFallbackResponse(type, idea) {
     const templates = {
-      "Market Analyst": "Based on current market trends, this idea addresses a significant gap. However, saturation in this sector is a risk. I recommend focusing on your unique value proposition to stand out. \n\n(Note: Live AI analysis unavailable, this is a simulation based on your input).",
-      "Investor": "The financial viability looks promising, though customer acquisition costs need verification. The valuation seems reasonable for a pre-seed stage. I would be interested in seeing a more detailed pitch deck. \n\n(Note: Live AI analysis unavailable, this is a simulation based on your input).",
-      "Project Manager": "Implementation roadmap seems feasible. I suggest an agile approach to MVP. Key milestones should include user validation within the first 3 months. \n\n(Note: Live AI analysis unavailable, this is a simulation based on your input).",
-      "Team Builder": "You'll need a strong technical co-founder and a marketing lead. Building a diverse team will be crucial for execution. \n\n(Note: Live AI analysis unavailable, this is a simulation based on your input).",
-      "VC": "As a Venture Capitalist, I look for scalability and a strong moat. This idea has potential, but I need to see a clearer path to $100M ARR. Focus on your unit economics and go-to-market strategy. \n\n(Note: Live AI analysis unavailable, this is a simulation).",
-      "Customer": "I would definitely consider using this if the price point is accessible. It seems to solve a real problem for me. Make sure the user experience is intuitive. \n\n(Note: Live AI analysis unavailable, this is a simulation).",
-      "Skeptic": "I'm not convinced. The market is crowded and existing solutions are 'good enough'. What makes you 10x better? You need a stronger differentiator to survive. \n\n(Note: Live AI analysis unavailable, this is a simulation).",
+      "Market Analyst": "Based on current market trends, this idea addresses a significant gap. However, saturation in this sector is a risk. I recommend focusing on your unique value proposition to stand out. \n\n⚠️ FALLBACK MODE: Live AI analysis is currently unavailable. This is a generic simulation. Please check your Gemini API configuration.",
+      "Investor": "The financial viability looks promising, though customer acquisition costs need verification. The valuation seems reasonable for a pre-seed stage. I would be interested in seeing a more detailed pitch deck. \n\n⚠️ FALLBACK MODE: Live AI analysis is currently unavailable. This is a generic simulation. Please check your Gemini API configuration.",
+      "Project Manager": "Implementation roadmap seems feasible. I suggest an agile approach to MVP. Key milestones should include user validation within the first 3 months. \n\n⚠️ FALLBACK MODE: Live AI analysis is currently unavailable. This is a generic simulation. Please check your Gemini API configuration.",
+      "Team Builder": "You'll need a strong technical co-founder and a marketing lead. Building a diverse team will be crucial for execution. \n\n⚠️ FALLBACK MODE: Live AI analysis is currently unavailable. This is a generic simulation. Please check your Gemini API configuration.",
+      "VC": "As a Venture Capitalist, I look for scalability and a strong moat. This idea has potential, but I need to see a clearer path to $100M ARR. Focus on your unit economics and go-to-market strategy. \n\n⚠️ FALLBACK MODE: Live AI analysis is currently unavailable. This is a generic simulation. Please check your Gemini API configuration.",
+      "Customer": "I would definitely consider using this if the price point is accessible. It seems to solve a real problem for me. Make sure the user experience is intuitive. \n\n⚠️ FALLBACK MODE: Live AI analysis is currently unavailable. This is a generic simulation. Please check your Gemini API configuration.",
+      "Skeptic": "I'm not convinced. The market is crowded and existing solutions are 'good enough'. What makes you 10x better? You need a stronger differentiator to survive. \n\n⚠️ FALLBACK MODE: Live AI analysis is currently unavailable. This is a generic simulation. Please check your Gemini API configuration.",
     };
-    return templates[type] || "Analysis simulation: This concept has potential but requires further validation.";
+    return templates[type] || "⚠️ FALLBACK MODE: Live AI analysis unavailable. This is a generic simulation.";
   }
 
   extractRating(text) {
-    // Simple regex to look for "Rating: X/100" or similar patterns
-    // Adjust based on actual prompt output
-    const match = text.match(/Rating:\s*(\d+)\/100/i);
+    // Try multiple rating formats
+    // Format 1: "Rating: X/100"
+    let match = text.match(/Rating:\s*(\d+)\s*\/\s*100/i);
     if (match && match[1]) {
       return parseInt(match[1], 10);
     }
+
+    // Format 2: "Rating: X/10" (convert to /100)
+    match = text.match(/Rating:\s*(\d+)\s*\/\s*10/i);
+    if (match && match[1]) {
+      return parseInt(match[1], 10) * 10;
+    }
+
+    // Format 3: "Score: X/100"
+    match = text.match(/Score:\s*(\d+)\s*\/\s*100/i);
+    if (match && match[1]) {
+      return parseInt(match[1], 10);
+    }
+
+    // Format 4: Just a number at the end like "85/100"
+    match = text.match(/(\d+)\s*\/\s*100/);
+    if (match && match[1]) {
+      return parseInt(match[1], 10);
+    }
+
     return null;
   }
 }

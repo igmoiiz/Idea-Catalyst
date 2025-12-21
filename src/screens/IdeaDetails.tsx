@@ -238,24 +238,36 @@ const IdeaDetails: React.FC<IdeaDetailsProps> = ({ id, onNavigate }) => {
                     </div>
                 ) : responses.length > 0 ? (
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        {responses.map(response => (
-                            <div key={response._id} className="rounded-2xl border border-white/10 bg-[#0f172a]/60 backdrop-blur-md p-6 hover:border-[#FFBA00]/30 transition-all">
-                                <div className="flex items-center justify-between mb-4 pb-4 border-b border-white/5">
-                                    <div className="flex items-center gap-3">
-                                        <div className="w-10 h-10 rounded-full bg-[#FFBA00]/20 flex items-center justify-center text-[#FFBA00]">
-                                            {response.personaType === 'Investor' ? <DollarSignMini /> : <MessageSquare size={18} />}
+                        {responses.map(response => {
+                            // Check if this is a fallback response
+                            const isFallback = response.content.includes('⚠️ FALLBACK MODE') ||
+                                response.content.includes('Live AI analysis unavailable');
+
+                            return (
+                                <div key={response._id} className="rounded-2xl border border-white/10 bg-[#0f172a]/60 backdrop-blur-md p-6 hover:border-[#FFBA00]/30 transition-all">
+                                    {isFallback && (
+                                        <div className="mb-4 p-3 rounded-lg bg-yellow-500/10 border border-yellow-500/30 flex items-center gap-2 text-yellow-200 text-sm">
+                                            <AlertCircle size={16} />
+                                            <span>Fallback Mode: Gemini API unavailable</span>
                                         </div>
-                                        <h3 className="font-bold text-white">{response.personaType}</h3>
+                                    )}
+                                    <div className="flex items-center justify-between mb-4 pb-4 border-b border-white/5">
+                                        <div className="flex items-center gap-3">
+                                            <div className="w-10 h-10 rounded-full bg-[#FFBA00]/20 flex items-center justify-center text-[#FFBA00]">
+                                                {response.personaType === 'Investor' ? <DollarSignMini /> : <MessageSquare size={18} />}
+                                            </div>
+                                            <h3 className="font-bold text-white">{response.personaType}</h3>
+                                        </div>
+                                        <div className="px-3 py-1 rounded-full bg-white/5 border border-white/10 text-sm font-bold text-[#FFBA00]">
+                                            Rating: {response.rating}/10
+                                        </div>
                                     </div>
-                                    <div className="px-3 py-1 rounded-full bg-white/5 border border-white/10 text-sm font-bold text-[#FFBA00]">
-                                        Rating: {response.rating}/10
-                                    </div>
+                                    <p className="text-white/80 text-sm leading-relaxed whitespace-pre-wrap">
+                                        {response.content}
+                                    </p>
                                 </div>
-                                <p className="text-white/80 text-sm leading-relaxed whitespace-pre-wrap">
-                                    {response.content}
-                                </p>
-                            </div>
-                        ))}
+                            );
+                        })}
                     </div>
                 ) : (
                     <div className="p-8 rounded-2xl bg-[#0f172a]/40 border border-white/10 flex flex-col items-center text-center">

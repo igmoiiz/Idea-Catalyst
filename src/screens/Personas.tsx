@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ArrowLeft, MessageSquare, User, Zap } from 'lucide-react';
+import { ArrowLeft, MessageSquare, User, Zap, AlertCircle } from 'lucide-react';
 import api from '../api/axios';
 
 interface PersonasProps {
@@ -179,6 +179,20 @@ const Personas: React.FC<PersonasProps> = ({ onNavigate, isAuthenticated }) => {
                     <div className="md:col-span-2">
                         {response ? (
                             <div className="rounded-2xl border border-white/20 bg-[#0f172a]/70 backdrop-blur-xl p-6 shadow-2xl h-full animate-in fade-in slide-in-from-bottom-4">
+                                {/* Fallback Warning */}
+                                {(response.content.includes('⚠️ FALLBACK MODE') || response.content.includes('Live AI analysis unavailable')) && (
+                                    <div className="mb-4 p-4 rounded-xl bg-yellow-500/10 border border-yellow-500/30 flex items-start gap-3 text-yellow-200">
+                                        <AlertCircle size={20} className="flex-shrink-0 mt-0.5" />
+                                        <div>
+                                            <div className="font-semibold mb-1">Fallback Mode Active</div>
+                                            <div className="text-sm text-yellow-200/80">
+                                                The Gemini API is currently unavailable. This is a generic simulated response.
+                                                Please check your API configuration or try again later.
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+
                                 <div className="flex items-center gap-4 mb-6 pb-6 border-b border-white/10">
                                     <div className="w-12 h-12 rounded-full bg-[#FFBA00] flex items-center justify-center text-[#0C3B2E]">
                                         {selectedPersona === 'VC' && <DollarSignMini size={24} />}
