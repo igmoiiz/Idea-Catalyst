@@ -45,6 +45,7 @@ const IdeaDetails: React.FC<IdeaDetailsProps> = ({ id, onNavigate }) => {
     const [analyzing, setAnalyzing] = useState(false);
     const [analysisError, setAnalysisError] = useState('');
     const [isOwner, setIsOwner] = useState(false);
+    const [hasTriggeredAnalysis, setHasTriggeredAnalysis] = useState(false); // Prevent duplicate auto-trigger
 
     useEffect(() => {
         const fetchIdeaAndResponses = async () => {
@@ -74,8 +75,9 @@ const IdeaDetails: React.FC<IdeaDetailsProps> = ({ id, onNavigate }) => {
                     if (responsesRes.data.success) {
                         setResponses(responsesRes.data.data);
 
-                        // Auto-analyze if owner and empty
-                        if (isUserOwner && responsesRes.data.data.length === 0) {
+                        // Auto-analyze if owner and empty (and hasn't been triggered yet)
+                        if (isUserOwner && responsesRes.data.data.length === 0 && !hasTriggeredAnalysis) {
+                            setHasTriggeredAnalysis(true);
                             triggerAnalysis(id);
                         }
                     }
@@ -100,8 +102,13 @@ const IdeaDetails: React.FC<IdeaDetailsProps> = ({ id, onNavigate }) => {
         setAnalyzing(true);
         setAnalysisError('');
         try {
-            // Trigger parallel analysis for key personas
-            const personasToAnalyze = ["Market Analyst", "Investor"];
+            // Trigger parallel analysis for 4 diverse personas
+            const personasToAnalyze = [
+                "Market Analyst",
+                "Investor",
+                "Project Manager",
+                "Team Builder"
+            ];
 
             await Promise.all(personasToAnalyze.map(persona =>
                 api.post('/personas/generate', {
@@ -260,7 +267,7 @@ const IdeaDetails: React.FC<IdeaDetailsProps> = ({ id, onNavigate }) => {
                                             <h3 className="font-bold text-white">{response.personaType}</h3>
                                         </div>
                                         <div className="px-3 py-1 rounded-full bg-white/5 border border-white/10 text-sm font-bold text-[#FFBA00]">
-                                            Rating: {response.rating}/10
+                                            Rating: {response.rating}/100
                                         </div>
                                     </div>
                                     <div className="text-white/80 text-sm leading-relaxed">

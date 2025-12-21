@@ -208,7 +208,7 @@ const Personas: React.FC<PersonasProps> = ({ onNavigate, isAuthenticated }) => {
                                         </h3>
                                         <div className="mt-1 flex items-center gap-2">
                                             <span className="text-sm text-white/60">Rating:</span>
-                                            <span className="text-[#FFBA00] font-bold">{response.rating}/10</span>
+                                            <span className="text-[#FFBA00] font-bold">{response.rating}/100</span>
                                         </div>
                                     </div>
                                 </div>

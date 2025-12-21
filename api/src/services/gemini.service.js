@@ -56,10 +56,10 @@ class GeminiService {
       "Investor": "Investor Simulation Module",
       "Team Builder": "Team Builder System",
       "Pitch Deck": "AI Pitch Deck Generator",
-      // Mappings for Personas.tsx
-      "VC": "Investor Simulation Module",
-      "Customer": "Analyst Persona",
-      "Skeptic": "Analyst Persona",
+      // Unique mappings for Personas.tsx - each has distinct prompt file
+      "VC": "VC Persona",
+      "Customer": "Customer Persona",
+      "Skeptic": "Skeptic Persona",
     };
 
     const promptKey = personaMapping[personaType] || personaType;
