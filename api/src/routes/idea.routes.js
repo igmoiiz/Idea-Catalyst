@@ -218,4 +218,37 @@ router.delete("/:id", verifyToken, async (req, res) => {
   }
 });
 
+// Like/Unlike idea
+router.post("/:id/like", verifyToken, async (req, res) => {
+  try {
+    const idea = await Idea.findById(req.params.id);
+
+    if (!idea) {
+      return res.status(404).json({
+        success: false,
+        message: "Idea not found",
+      });
+    }
+
+    // Toggle like (increment/decrement)
+    // In a production app, you'd track individual user likes in a separate collection
+    // For now, we'll just increment the counter
+    idea.stats.likes += 1;
+    await idea.save();
+
+    res.status(200).json({
+      success: true,
+      data: idea,
+      message: "Idea liked successfully",
+    });
+  } catch (error) {
+    console.error("Like idea error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Server error while liking idea",
+      error: error.message,
+    });
+  }
+});
+
 module.exports = router;

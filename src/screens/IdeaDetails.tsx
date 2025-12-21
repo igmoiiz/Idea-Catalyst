@@ -24,6 +24,7 @@ interface Idea {
     createdAt: string;
     stats?: {
         views: number;
+        likes: number;
     };
 }
 
@@ -97,6 +98,56 @@ const IdeaDetails: React.FC<IdeaDetailsProps> = ({ id, onNavigate }) => {
             fetchIdeaAndResponses();
         }
     }, [id]);
+
+    const handleLike = async () => {
+        if (!idea) return;
+
+        try {
+            const res = await api.post(`/ideas/${idea._id}/like`);
+            if (res.data.success) {
+                // Update local state with new like count
+                setIdea(prev => prev ? {
+                    ...prev,
+                    stats: {
+                        ...prev.stats,
+                        views: prev.stats?.views || 0,
+                        likes: (prev.stats?.likes || 0) + 1
+                    }
+                } : null);
+            }
+        } catch (err: any) {
+            console.error("Failed to like idea", err);
+        }
+    };
+
+    const handleShare = async () => {
+        if (!idea) return;
+
+        const shareUrl = window.location.href;
+        const shareText = `Check out this startup idea: ${idea.title}`;
+
+        // Try to use Web Share API first (mobile-friendly)
+        if (navigator.share) {
+            try {
+                await navigator.share({
+                    title: idea.title,
+                    text: shareText,
+                    url: shareUrl,
+                });
+            } catch (err) {
+                console.log('Share cancelled or failed', err);
+            }
+        } else {
+            // Fallback to clipboard copy
+            try {
+                await navigator.clipboard.writeText(shareUrl);
+                alert('Link copied to clipboard!');
+            } catch (err) {
+                console.error('Failed to copy link', err);
+                alert('Failed to copy link');
+            }
+        }
+    };
 
     const triggerAnalysis = async (ideaId: string) => {
         setAnalyzing(true);
@@ -212,11 +263,17 @@ const IdeaDetails: React.FC<IdeaDetailsProps> = ({ id, onNavigate }) => {
                         <button className="flex items-center gap-2 px-6 py-3 rounded-full bg-[#FFBA00] text-[#0C3B2E] font-bold hover:bg-[#e6a800] transition-colors shadow-lg shadow-[#FFBA00]/10">
                             Support this Idea
                         </button>
-                        <button className="flex items-center gap-2 px-6 py-3 rounded-full bg-[#0f172a] border border-white/10 text-white hover:bg-[#1e293b] transition-colors">
-                            <Heart size={18} className="text-red-400" />
-                            Like ({idea.likes || 0})
+                        <button
+                            onClick={handleLike}
+                            className="flex items-center gap-2 px-6 py-3 rounded-full bg-[#0f172a] border border-white/10 text-white hover:bg-[#1e293b] hover:border-red-400/50 transition-colors group"
+                        >
+                            <Heart size={18} className="text-red-400 group-hover:fill-red-400 transition-colors" />
+                            Like ({idea.stats?.likes || 0})
                         </button>
-                        <button className="flex items-center gap-2 px-6 py-3 rounded-full bg-[#0f172a] border border-white/10 text-white hover:bg-[#1e293b] transition-colors">
+                        <button
+                            onClick={handleShare}
+                            className="flex items-center gap-2 px-6 py-3 rounded-full bg-[#0f172a] border border-white/10 text-white hover:bg-[#1e293b] hover:border-[#FFBA00]/50 transition-colors"
+                        >
                             <Share2 size={18} />
                             Share
                         </button>
