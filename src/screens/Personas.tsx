@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { ArrowLeft, MessageSquare, User, Zap, AlertCircle } from 'lucide-react';
 import api from '../api/axios';
+import { parseMarkdownToJSX } from '../utils/formatters';
 
 interface PersonasProps {
     onNavigate: (view: string) => void;
@@ -212,8 +213,8 @@ const Personas: React.FC<PersonasProps> = ({ onNavigate, isAuthenticated }) => {
                                     </div>
                                 </div>
 
-                                <div className="prose prose-invert max-w-none">
-                                    <p className="text-white/90 whitespace-pre-wrap leading-relaxed">{response.content}</p>
+                                <div className="text-white/90 leading-relaxed">
+                                    {parseMarkdownToJSX(response.content)}
                                 </div>
                             </div>
                         ) : (

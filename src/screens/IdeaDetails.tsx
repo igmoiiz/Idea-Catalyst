@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { ArrowLeft, Clock, User, Heart, Share2, Sparkles, MessageSquare, AlertCircle } from 'lucide-react';
 import api from '../api/axios';
 import { authService } from '../services/auth.service';
+import { parseMarkdownToJSX } from '../utils/formatters';
 
 interface IdeaDetailsProps {
     id: string;
@@ -262,9 +263,9 @@ const IdeaDetails: React.FC<IdeaDetailsProps> = ({ id, onNavigate }) => {
                                             Rating: {response.rating}/10
                                         </div>
                                     </div>
-                                    <p className="text-white/80 text-sm leading-relaxed whitespace-pre-wrap">
-                                        {response.content}
-                                    </p>
+                                    <div className="text-white/80 text-sm leading-relaxed">
+                                        {parseMarkdownToJSX(response.content)}
+                                    </div>
                                 </div>
                             );
                         })}
