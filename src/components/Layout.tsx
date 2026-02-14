@@ -69,7 +69,7 @@ const Layout: React.FC<LayoutProps> = ({ children, onNavigate, isAuthenticated, 
             <button className="hover:text-[#FFBA00] transition-colors">Contact</button>
             <button className="hover:text-[#FFBA00] transition-colors">Terms</button>
           </div>
-          <p className="text-sm text-white/60">© 2025 Idea Catalyst. All rights reserved.</p>
+          <p className="text-sm text-white/60">© 2026 Idea Catalyst. All rights reserved | Created by Moiz Baloch & Aimah Bilal</p>
         </div>
       </footer>
     </div>
