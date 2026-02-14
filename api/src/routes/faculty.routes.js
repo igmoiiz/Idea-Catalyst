@@ -32,6 +32,7 @@ const requireFacultyAuth = (req, res, next) => {
 
 // Public Routes
 router.post("/login", facultyController.login);
+router.get("/projects", facultyController.getProjects);
 
 // Protected Routes
 router.post("/upload", requireFacultyAuth, upload.single("file"), facultyController.uploadFile);
