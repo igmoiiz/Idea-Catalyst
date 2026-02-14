@@ -1,4 +1,10 @@
 const path = require("path");
+const dns = require("dns");
+try {
+    dns.setServers(['8.8.8.8', '8.8.4.4']); // Force Google DNS
+} catch (e) {
+    console.warn("Could not set custom DNS servers:", e.message);
+}
 require("dotenv").config({ path: path.join(__dirname, "../../.env") });
 const mongoose = require("mongoose");
 const User = require("../models/user.model");
@@ -15,7 +21,9 @@ const question = (query) => new Promise((resolve) => rl.question(query, resolve)
 const createFaculty = async () => {
     try {
         // Connect to Database
-        await mongoose.connect(process.env.MONGODB_URI);
+        await mongoose.connect(process.env.MONGODB_URI, {
+            family: 4 // Force IPv4
+        });
         console.log("Connected to MongoDB");
 
         console.log("\n--- Create Faculty User ---");
@@ -32,7 +40,7 @@ const createFaculty = async () => {
 
         console.log("\nAvailable Departments: CS, SE, CYS, AI, DS, IT, General");
         let department = await question("Enter Department (default: General): ");
-        
+
         // Validation & Defaulting
         const validDepartments = ["CS", "SE", "CYS", "AI", "DS", "IT", "General"];
         department = department.trim();
@@ -69,7 +77,7 @@ const createFaculty = async () => {
         console.log(`Name: ${name}`);
         console.log(`Email: ${email}`);
         console.log(`Department: ${department}`);
-        
+
         process.exit(0);
     } catch (error) {
         console.error("\n❌ Error creating faculty user:", error.message);
