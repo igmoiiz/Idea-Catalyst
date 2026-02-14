@@ -1,0 +1,123 @@
+{
+	"info": {
+		"_postman_id": "faculty-routes-test",
+		"name": "IdeaCatalyst - Faculty Routes",
+		"description": "Collection for testing Faculty login and project data upload API endpoints.",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"item": [
+		{
+			"name": "Faculty Login",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"var jsonData = pm.response.json();",
+							"if (jsonData.success && jsonData.token) {",
+							"    pm.collectionVariables.set(\"token\", jsonData.token);",
+							"    console.log(\"Token set successfully\");",
+							"}"
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"email\": \"faculty@example.com\",\n    \"password\": \"securepassword\"\n}"
+				},
+				"url": {
+					"raw": "{{baseUrl}}/api/faculty/login",
+					"host": [
+						"{{baseUrl}}"
+					],
+					"path": [
+						"api",
+						"faculty",
+						"login"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Upload Project Data",
+			"request": {
+				"auth": {
+					"type": "bearer",
+					"bearer": [
+						{
+							"key": "token",
+							"value": "{{token}}",
+							"type": "string"
+						}
+					]
+				},
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "formdata",
+					"formdata": [
+						{
+							"key": "file",
+							"type": "file",
+							"src": []
+						}
+					]
+				},
+				"url": {
+					"raw": "{{baseUrl}}/api/faculty/upload",
+					"host": [
+						"{{baseUrl}}"
+					],
+					"path": [
+						"api",
+						"faculty",
+						"upload"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Faculty Logout",
+			"request": {
+				"method": "POST",
+				"header": [],
+				"url": {
+					"raw": "{{baseUrl}}/api/faculty/logout",
+					"host": [
+						"{{baseUrl}}"
+					],
+					"path": [
+						"api",
+						"faculty",
+						"logout"
+					]
+				}
+			},
+			"response": []
+		}
+	],
+	"variable": [
+		{
+			"key": "baseUrl",
+			"value": "http://localhost:5000",
+			"type": "string"
+		},
+		{
+			"key": "token",
+			"value": "",
+			"type": "string"
+		}
+	]
+}

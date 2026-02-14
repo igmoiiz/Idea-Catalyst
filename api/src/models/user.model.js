@@ -37,6 +37,16 @@ const userSchema = new mongoose.Schema(
     resetPasswordToken: String,
     resetPasswordExpires: Date,
     lastLogin: Date,
+    role: {
+      type: String,
+      enum: ["user", "faculty"],
+      default: "user",
+    },
+    department: {
+      type: String,
+      enum: ["CS", "SE", "CYS", "AI", "DS", "IT", "General"],
+      default: "General",
+    },
   },
   {
     timestamps: true,

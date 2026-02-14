@@ -4,13 +4,17 @@ const mongoose = require("mongoose");
 const cors = require("cors");
 const helmet = require("helmet");
 const morgan = require("morgan");
+
 const path = require("path");
+const cookieParser = require("cookie-parser");
 
 // Routes
 const authRoutes = require("./routes/auth.routes");
 const ideaRoutes = require("./routes/idea.routes");
 const personaRoutes = require("./routes/persona.routes");
+
 const marketplaceRoutes = require("./routes/marketplace.routes");
+const facultyRoutes = require("./routes/faculty.routes");
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -27,6 +31,8 @@ app.use(
   }),
 );
 app.use(express.json());
+
+app.use(cookieParser());
 app.use(morgan("dev"));
 
 // Database Connection
@@ -43,7 +49,9 @@ mongoose
 app.use("/api/auth", authRoutes);
 app.use("/api/ideas", ideaRoutes);
 app.use("/api/personas", personaRoutes);
+
 app.use("/api/marketplace", marketplaceRoutes);
+app.use("/api/faculty", facultyRoutes);
 
 // Basic route
 app.get("/", (req, res) => {
