@@ -16,9 +16,8 @@ const {
 } = require("../middleware/validator");
 const { verifyToken } = require("../middleware/auth");
 const {
-  sendOTPEmail,
   sendPasswordResetEmail,
-} = require("../config/nodemailer");
+} = require("../config/resend");
 
 // Health check endpoint
 router.get("/health", (req, res) => {
@@ -30,10 +29,7 @@ router.get("/health", (req, res) => {
   });
 });
 
-// Generate OTP
-const generateOTP = () => {
-  return Math.floor(100000 + Math.random() * 900000).toString();
-};
+
 
 // Register endpoint
 router.post(
@@ -111,141 +107,7 @@ router.post(
   }
 );
 
-// Verify OTP endpoint
-router.post("/verify-otp", authLimiter, async (req, res) => {
-  try {
-    const { email, otp } = req.body;
 
-    if (!email || !otp) {
-      return res.status(400).json({
-        success: false,
-        message: "Please provide email and OTP",
-      });
-    }
-
-    const user = await User.findOne({ email });
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: "User not found",
-      });
-    }
-
-    if (user.isVerified) {
-      return res.status(400).json({
-        success: false,
-        message: "Email already verified",
-      });
-    }
-
-    if (!user.isValidOTP(otp)) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid or expired OTP",
-      });
-    }
-
-    // Mark user as verified and clear OTP
-    user.isVerified = true;
-    user.otp = undefined;
-    await user.save();
-
-    // Generate JWT token
-    const token = jwt.sign(
-      { id: user._id, email: user.email },
-      process.env.JWT_SECRET,
-      { expiresIn: "1h" }
-    );
-
-    // Generate refresh token
-    const refreshToken = crypto.randomBytes(40).toString("hex");
-    user.refreshToken = refreshToken;
-    await user.save();
-
-    res.status(200).json({
-      success: true,
-      message: "Email verified successfully",
-      token,
-      refreshToken,
-      user: {
-        id: user._id,
-        name: user.name,
-        email: user.email,
-        role: user.role,
-      },
-    });
-  } catch (error) {
-    console.error("OTP verification error:", error);
-    res.status(500).json({
-      success: false,
-      message: "Server error during OTP verification",
-      error: error.message,
-    });
-  }
-});
-
-// Resend OTP endpoint
-router.post("/resend-otp", authLimiter, async (req, res) => {
-  try {
-    const { email } = req.body;
-
-    if (!email) {
-      return res.status(400).json({
-        success: false,
-        message: "Please provide email",
-      });
-    }
-
-    const user = await User.findOne({ email });
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: "User not found",
-      });
-    }
-
-    if (user.isVerified) {
-      return res.status(400).json({
-        success: false,
-        message: "Email already verified",
-      });
-    }
-
-    // Generate new OTP
-    const otp = generateOTP();
-    const otpExpiry = new Date();
-    otpExpiry.setMinutes(otpExpiry.getMinutes() + 10); // OTP valid for 10 minutes
-
-    user.otp = {
-      code: otp,
-      expiresAt: otpExpiry,
-    };
-    await user.save();
-
-    // Send OTP email
-    const emailResult = await sendOTPEmail(email, otp);
-
-    if (!emailResult.success) {
-      return res.status(500).json({
-        success: false,
-        message: "Failed to send OTP email",
-        error: emailResult.error,
-      });
-    }
-
-    res.status(200).json({
-      success: true,
-      message: "OTP resent successfully",
-    });
-  } catch (error) {
-    console.error("Resend OTP error:", error);
-    res.status(500).json({
-      success: false,
-      message: "Server error during OTP resend",
-      error: error.message,
-    });
-  }
-});
 
 // Login endpoint
 router.post("/login", authLimiter, validateLogin, async (req, res) => {
@@ -278,29 +140,7 @@ router.post("/login", authLimiter, validateLogin, async (req, res) => {
       });
     }
 
-    // Check if email is verified
-    if (!user.isVerified) {
-      // Generate new OTP for unverified users
-      const otp = generateOTP();
-      const otpExpiry = new Date();
-      otpExpiry.setMinutes(otpExpiry.getMinutes() + 10);
 
-      user.otp = {
-        code: otp,
-        expiresAt: otpExpiry,
-      };
-      await user.save();
-
-      // Send OTP email
-      await sendOTPEmail(email, otp);
-
-      return res.status(403).json({
-        success: false,
-        message:
-          "Email not verified. A new verification code has been sent to your email.",
-        requiresVerification: true,
-      });
-    }
 
     // Update last login time
     user.lastLogin = new Date();
