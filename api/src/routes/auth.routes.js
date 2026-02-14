@@ -15,9 +15,7 @@ const {
   validateEmail,
 } = require("../middleware/validator");
 const { verifyToken } = require("../middleware/auth");
-const {
-  sendPasswordResetEmail,
-} = require("../config/resend");
+
 
 // Health check endpoint
 router.get("/health", (req, res) => {
@@ -235,48 +233,10 @@ router.post(
   validateEmail,
   async (req, res) => {
     try {
-      const { email } = req.body;
-
-      if (!email) {
-        return res.status(400).json({
-          success: false,
-          message: "Please provide email",
-        });
-      }
-
-      const user = await User.findOne({ email });
-      if (!user) {
-        // For security reasons, don't reveal that the user doesn't exist
-        return res.status(200).json({
-          success: true,
-          message:
-            "If your email is registered, you will receive a password reset link",
-        });
-      }
-
-      // Generate reset token
-      const resetToken = crypto.randomBytes(32).toString("hex");
-      const hashedToken = crypto
-        .createHash("sha256")
-        .update(resetToken)
-        .digest("hex");
-
-      // Set token and expiry
-      user.resetPasswordToken = hashedToken;
-      user.resetPasswordExpires = Date.now() + 10 * 60 * 1000; // 10 minutes
-      await user.save();
-
-      // Send password reset email
-      const emailResult = await sendPasswordResetEmail(email, resetToken);
-
-      if (!emailResult.success) {
-        return res.status(500).json({
-          success: false,
-          message: "Failed to send password reset email",
-          error: emailResult.error,
-        });
-      }
-
+      // Password reset functionality temporarily disabled/removed
+      // as no email service is configured.
+      
+      // For security, still return success to prevent email enumeration
       res.status(200).json({
         success: true,
         message:
