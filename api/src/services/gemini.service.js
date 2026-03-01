@@ -157,6 +157,54 @@ Please provide your analysis now:`;
 
     return null;
   }
+
+  /**
+   * Generate a detailed description for a faculty-uploaded project idea using Gemini.
+   * Used at upload time to enrich project records for student viewing.
+   * @param {{ supervisor: string, interested_area: string, project_idea: string }} project
+   * @returns {{ details: string, isFallback?: boolean }}
+   */
+  async generateProjectDetails(project) {
+    if (!this.promptsLoaded) {
+      await this.loadPrompts();
+    }
+
+    const systemPrompt = this.prompts["project-details"];
+    const fallbackDetails =
+      "Detailed description not available; please consult your supervisor for more information.";
+
+    if (!systemPrompt) {
+      console.warn("System prompt 'project-details' not found. Using fallback.");
+      return { details: fallbackDetails, isFallback: true };
+    }
+
+    const fullPrompt = `${systemPrompt}
+
+Project Idea: ${project.project_idea}
+Research Area: ${project.interested_area}
+Supervisor: ${project.supervisor}
+
+Generate the detailed description now:`;
+
+    try {
+      console.log(`🤖 Generating project details via Gemini API...`);
+      const result = await this.model.generateContent(fullPrompt);
+      const response = await result.response;
+      const text = response.text();
+
+      console.log(`✓ Gemini project details generated`);
+      return {
+        details: (text || "").trim() || fallbackDetails,
+        isFallback: false,
+      };
+    } catch (error) {
+      console.error("❌ Gemini project details error:", error.message);
+      return {
+        details: fallbackDetails,
+        isFallback: true,
+      };
+    }
+  }
 }
 
 module.exports = new GeminiService();

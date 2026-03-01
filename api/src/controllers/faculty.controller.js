@@ -1,8 +1,12 @@
 const path = require("path");
+const mongoose = require("mongoose");
 const User = require("../models/user.model");
+const FacultyProject = require("../models/facultyProject.model");
+const geminiService = require("../services/gemini.service");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const { createClient } = require("@supabase/supabase-js");
+const xlsx = require("xlsx");
 
 // Initializing Supabase client
 const supabaseUrl = process.env.SUPABASE_URL;
@@ -117,19 +121,82 @@ exports.uploadFile = async (req, res) => {
             });
         }
 
-        // Get public URL
-        const { data: publicUrlData } = supabase
-            .storage
-            .from(process.env.SUPABASE_BUCKET_NAME || 'project-data')
-            .getPublicUrl(fileName);
+        // Parse file and persist enriched projects to MongoDB
+        let projectCount = 0;
+        try {
+            const parsed = parseProjectsFromBuffer(file.buffer, department);
+            if (parsed.length === 0) {
+                return res.status(200).json({
+                    success: true,
+                    message: "File uploaded successfully. No valid project rows found.",
+                    count: 0,
+                    data: {
+                        path: data.path,
+                        fullPath: data.fullPath,
+                        department: department,
+                        fileName: fileName
+                    }
+                });
+            }
+
+            const uploadBatch = new mongoose.Types.ObjectId().toString();
+
+            // Generate Gemini details for each project (batch of 5 to limit concurrency)
+            const BATCH_SIZE = 5;
+            const projectDocs = [];
+
+            for (let i = 0; i < parsed.length; i += BATCH_SIZE) {
+                const batch = parsed.slice(i, i + BATCH_SIZE);
+                const detailsResults = await Promise.all(
+                    batch.map((p) => geminiService.generateProjectDetails(p))
+                );
+
+                for (let j = 0; j < batch.length; j++) {
+                    const p = batch[j];
+                    const { details } = detailsResults[j];
+                    projectDocs.push({
+                        supervisor: p.supervisor,
+                        department: p.department,
+                        interested_area: p.interested_area,
+                        project_idea: p.project_idea,
+                        details: details || "",
+                        faculty: user._id,
+                        sourceFilePath: fileName,
+                        rowIndex: p.rowIndex,
+                        uploadBatch,
+                    });
+                }
+            }
+
+            // Remove previous projects for this department (keep only latest upload)
+            await FacultyProject.deleteMany({ department });
+
+            await FacultyProject.insertMany(projectDocs);
+            projectCount = projectDocs.length;
+            console.log(`✓ Persisted ${projectCount} faculty projects for department ${department}`);
+        } catch (parseError) {
+            console.error("Parse/enrich error:", parseError);
+            // Still return success for Supabase upload; projects just won't be in Mongo
+            return res.status(200).json({
+                success: true,
+                message: "File uploaded to storage, but project processing failed. " + parseError.message,
+                count: 0,
+                data: {
+                    path: data.path,
+                    fullPath: data.fullPath,
+                    department: department,
+                    fileName: fileName
+                }
+            });
+        }
 
         res.status(200).json({
             success: true,
             message: "File uploaded successfully",
+            count: projectCount,
             data: {
                 path: data.path,
                 fullPath: data.fullPath,
-                publicUrl: publicUrlData.publicUrl,
                 department: department,
                 fileName: fileName
             }
@@ -144,7 +211,89 @@ exports.uploadFile = async (req, res) => {
     }
 };
 
-const xlsx = require("xlsx");
+/**
+ * Parse spreadsheet buffer into project objects.
+ * Shared by upload (for Mongo persistence) and getProjects fallback (Supabase-only).
+ * @param {Buffer} buffer - File buffer from multer or Supabase download
+ * @param {string} department - Department code
+ * @returns {Array<{ supervisor: string, interested_area: string, project_idea: string, department: string, rowIndex: number }>}
+ */
+function parseProjectsFromBuffer(buffer, department) {
+    let workbook;
+    try {
+        workbook = xlsx.read(buffer, { type: "buffer" });
+    } catch (e) {
+        throw new Error("Failed to parse file. Ensure it is a valid Excel (.xlsx, .xls) or CSV (.csv) file.");
+    }
+
+    const sheetName = workbook.SheetNames[0];
+    const sheet = workbook.Sheets[sheetName];
+    const rawRows = xlsx.utils.sheet_to_json(sheet, { header: 1 });
+
+    let headerRowIndex = 0;
+    let maxMatches = 0;
+
+    if (rawRows.length > 0) {
+        for (let i = 0; i < Math.min(rawRows.length, 10); i++) {
+            const row = rawRows[i];
+            if (!row || !Array.isArray(row)) continue;
+
+            let matches = 0;
+            const rowString = row.join(" ").toLowerCase();
+            if (rowString.includes("supervisor") || rowString.includes("name") || rowString.includes("faculty")) matches++;
+            if (rowString.includes("area") || rowString.includes("search") || rowString.includes("domain")) matches++;
+            if (rowString.includes("idea") || rowString.includes("project") || rowString.includes("title")) matches++;
+
+            if (matches > maxMatches) {
+                maxMatches = matches;
+                headerRowIndex = i;
+            }
+            if (matches >= 3) break;
+        }
+    }
+
+    const jsonData = xlsx.utils.sheet_to_json(sheet, { range: headerRowIndex });
+    if (jsonData.length === 0) return [];
+
+    const firstRow = jsonData[0];
+    const keys = Object.keys(firstRow);
+
+    const findKey = (keywords) =>
+        keys.find((key) =>
+            keywords.some((kw) => key.toLowerCase().includes(kw.toLowerCase()))
+        );
+
+    const supervisorKey = findKey(["supervisor", "name", "faculty", "teacher"]) || keys.find((k) => k.toLowerCase().includes("sup")) || "supervisor";
+    const areaKey = findKey(["area", "domain", "field", "interest", "research"]) || "interested_area";
+
+    let ideaKeys = keys.filter((key) => {
+        const lowerKey = key.toLowerCase();
+        return (lowerKey.includes("idea") || lowerKey.includes("project") || lowerKey.includes("title")) &&
+            !lowerKey.includes("area") && !lowerKey.includes("domain") && !lowerKey.includes("supervisor");
+    });
+    if (ideaKeys.length === 0) ideaKeys = ["project_idea"];
+
+    const projects = [];
+    jsonData.forEach((row, rowIndex) => {
+        const supervisor = row[supervisorKey] || "Unknown Faculty";
+        const area = row[areaKey] || "General Area";
+
+        ideaKeys.forEach((ideaKey, ideaIndex) => {
+            const idea = row[ideaKey];
+            if (idea && typeof idea === "string" && idea.trim().length > 0) {
+                projects.push({
+                    supervisor,
+                    interested_area: area,
+                    project_idea: idea.trim(),
+                    department,
+                    rowIndex,
+                });
+            }
+        });
+    });
+
+    return projects;
+}
 
 exports.logout = (req, res) => {
     // Client-side can just discard the token, but we return success here
@@ -157,9 +306,9 @@ exports.logout = (req, res) => {
 // Controller for fetching projects
 exports.getProjects = async (req, res) => {
     try {
-        const { department } = req.query;
+        const { department, supervisor } = req.query;
 
-        console.log(`Fetching projects for department: ${department}`);
+        console.log(`Fetching projects for department: ${department}${supervisor ? `, supervisor: ${supervisor}` : ""}`);
 
         if (!department) {
             return res.status(400).json({
@@ -168,176 +317,81 @@ exports.getProjects = async (req, res) => {
             });
         }
 
-        // Check if Supabase is configured
+        // 1. Try MongoDB first (FacultyProject)
+        const mongoFilter = { department };
+        if (supervisor && String(supervisor).trim()) {
+            mongoFilter.supervisor = new RegExp(`^${String(supervisor).trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`, "i");
+        }
+
+        const mongoProjects = await FacultyProject.find(mongoFilter).sort({ createdAt: 1 }).lean();
+
+        if (mongoProjects.length > 0) {
+            const data = mongoProjects.map((p) => ({
+                id: p._id.toString(),
+                supervisor: p.supervisor,
+                interested_area: p.interested_area,
+                project_idea: p.project_idea,
+                department: p.department,
+                details: p.details || undefined,
+            }));
+            return res.status(200).json({ success: true, data });
+        }
+
+        // 2. Fallback: Supabase + parse (for deployments with only legacy uploads)
         if (!supabase) {
-            return res.status(500).json({
-                success: false,
-                message: "Supabase is not configured on the server."
-            });
-        }
-
-        // List files in department folder
-        const folder = department;
-        const { data: files, error: listError } = await supabase
-            .storage
-            .from(process.env.SUPABASE_BUCKET_NAME || 'project-data')
-            .list(folder, {
-                limit: 10,
-                offset: 0,
-                sortBy: { column: 'created_at', order: 'desc' },
-            });
-
-        if (listError) {
-            console.error("Supabase list error:", listError);
-            return res.status(500).json({
-                success: false,
-                message: `Failed to list files: ${listError.message}`
-            });
-        }
-
-        if (!files || files.length === 0) {
-            console.log("No files found for department:", department);
-            return res.status(200).json({
-                success: true,
-                data: []
-            });
-        }
-
-        // Get the latest file (should be first due to sort)
-        const latestFile = files[0];
-        const filePath = `${folder}/${latestFile.name}`;
-        console.log(`Processing latest file: ${filePath}`);
-
-        // Download the file
-        const { data: fileData, error: downloadError } = await supabase
-            .storage
-            .from(process.env.SUPABASE_BUCKET_NAME || 'project-data')
-            .download(filePath);
-
-        if (downloadError) {
-            console.error("Supabase download error:", downloadError);
-            return res.status(500).json({
-                success: false,
-                message: `Failed to download file: ${downloadError.message}`
-            });
-        }
-
-        // Parse Excel or CSV file
-        const buffer = await fileData.arrayBuffer();
-
-        let workbook;
-        try {
-            // xlsx.read handles both .xlsx and .csv files correctly
-            workbook = xlsx.read(buffer, { type: 'buffer' });
-        } catch (parseError) {
-            console.error("File parsing error:", parseError);
-            return res.status(400).json({
-                success: false,
-                message: "Failed to parse file. Please ensure it is a valid Excel (.xlsx, .xls) or CSV (.csv) file."
-            });
-        }
-
-        const sheetName = workbook.SheetNames[0];
-        const sheet = workbook.Sheets[sheetName];
-
-        // Smart Header Detection
-        // 1. Get raw data as array of arrays
-        const rawRows = xlsx.utils.sheet_to_json(sheet, { header: 1 });
-
-        let headerRowIndex = 0;
-        let maxMatches = 0;
-
-        if (rawRows.length > 0) {
-            // Scan first 10 rows to find the most likely header row
-            for (let i = 0; i < Math.min(rawRows.length, 10); i++) {
-                const row = rawRows[i];
-                if (!row || !Array.isArray(row)) continue;
-
-                let matches = 0;
-                const rowString = row.join(' ').toLowerCase();
-
-                if (rowString.includes('supervisor') || rowString.includes('name') || rowString.includes('faculty')) matches++;
-                if (rowString.includes('area') || rowString.includes('search') || rowString.includes('domain')) matches++;
-                if (rowString.includes('idea') || rowString.includes('project') || rowString.includes('title')) matches++;
-
-                if (matches > maxMatches) {
-                    maxMatches = matches;
-                    headerRowIndex = i;
-                }
-
-                // If we found a row with all 3 key concepts, stop searching
-                if (matches >= 3) break;
-            }
-        }
-
-        console.log(`Smart Header Detection: Using row ${headerRowIndex} as header (matches: ${maxMatches})`);
-
-        // 2. Parse data starting from the detected header row
-        const jsonData = xlsx.utils.sheet_to_json(sheet, { range: headerRowIndex });
-
-        if (jsonData.length === 0) {
             return res.status(200).json({ success: true, data: [] });
         }
 
-        // Inspect header keys from the first row of parsed data
-        // sheet_to_json with range automatically uses that row as keys
-        const firstRow = jsonData[0];
-        const keys = Object.keys(firstRow);
-        console.log("Excel Headers Found:", keys);
+        const folder = department;
+        const { data: files, error: listError } = await supabase
+            .storage
+            .from(process.env.SUPABASE_BUCKET_NAME || "project-data")
+            .list(folder, {
+                limit: 10,
+                offset: 0,
+                sortBy: { column: "created_at", order: "desc" },
+            });
 
-        // Helper to find matching key case-insensitive
-        const findKey = (keywords) => {
-            return keys.find(key =>
-                keywords.some(keyword => key.toLowerCase().includes(keyword.toLowerCase()))
-            );
-        };
-
-        const supervisorKey = findKey(['supervisor', 'name', 'faculty', 'teacher']) || keys.find(k => k.toLowerCase().includes('sup')) || 'supervisor';
-        const areaKey = findKey(['area', 'domain', 'field', 'interest', 'research']) || 'interested_area';
-
-        // Find ALL keys that look like project ideas
-        const ideaKeys = keys.filter(key => {
-            const lowerKey = key.toLowerCase();
-            return (lowerKey.includes('idea') || lowerKey.includes('project') || lowerKey.includes('title')) &&
-                !lowerKey.includes('area') &&
-                !lowerKey.includes('domain') &&
-                !lowerKey.includes('supervisor');
-        });
-
-        // If no specific idea keys found, fallback to default
-        if (ideaKeys.length === 0) {
-            ideaKeys.push('project_idea');
+        if (listError || !files || files.length === 0) {
+            return res.status(200).json({ success: true, data: [] });
         }
 
-        console.log(`Mapped Keys - Supervisor: ${supervisorKey}, Area: ${areaKey}, Idea Keys: ${ideaKeys.join(', ')}`);
+        const latestFile = files[0];
+        const filePath = `${folder}/${latestFile.name}`;
+        const { data: fileData, error: downloadError } = await supabase
+            .storage
+            .from(process.env.SUPABASE_BUCKET_NAME || "project-data")
+            .download(filePath);
 
-        // Map to expected format, flattening multiple ideas per row
-        const projects = [];
+        if (downloadError) {
+            return res.status(200).json({ success: true, data: [] });
+        }
 
-        jsonData.forEach((row, rowIndex) => {
-            const supervisor = row[supervisorKey] || "Unknown Faculty";
-            const area = row[areaKey] || "General Area";
+        const buffer = Buffer.from(await fileData.arrayBuffer());
+        let parsed;
+        try {
+            parsed = parseProjectsFromBuffer(buffer, department);
+        } catch (e) {
+            return res.status(200).json({ success: true, data: [] });
+        }
 
-            // Iterate through all identified idea columns
-            ideaKeys.forEach((ideaKey, ideaIndex) => {
-                const idea = row[ideaKey];
-                if (idea && typeof idea === 'string' && idea.trim().length > 0) {
-                    projects.push({
-                        id: `${department}-${rowIndex}-${ideaIndex}`,
-                        supervisor: supervisor,
-                        interested_area: area,
-                        project_idea: idea.trim(),
-                        department: department
-                    });
-                }
-            });
-        });
+        // Filter by supervisor if provided
+        let filtered = parsed;
+        if (supervisor && String(supervisor).trim()) {
+            const supLower = String(supervisor).trim().toLowerCase();
+            filtered = parsed.filter((p) => p.supervisor.toLowerCase() === supLower);
+        }
 
-        res.status(200).json({
-            success: true,
-            data: projects
-        });
+        const data = filtered.map((p, idx) => ({
+            id: `${department}-fallback-${idx}`,
+            supervisor: p.supervisor,
+            interested_area: p.interested_area,
+            project_idea: p.project_idea,
+            department: p.department,
+            details: undefined,
+        }));
 
+        res.status(200).json({ success: true, data });
     } catch (error) {
         console.error("Get projects error:", error);
         res.status(500).json({
